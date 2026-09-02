@@ -151,10 +151,17 @@ message JobGroup {
 
 // Which slice of the project's queued traffic a DispatchLimit applies to.
 enum DispatchLimitScope {
-  // The project's whole queue.
+  // Invalid. A limit must name its scope: proto3 cannot tell an unset field
+  // from a deliberate zero, so a limit that omits one is rejected rather than
+  // silently given the widest possible reach.
   DISPATCH_LIMIT_SCOPE_UNSPECIFIED = 0;
   // QueuedJobInput.agent_name.
   DISPATCH_LIMIT_SCOPE_AGENT = 1;
+  // The project's whole queue.
+  DISPATCH_LIMIT_SCOPE_PROJECT = 3;
+
+  // 2 was a per-destination label scope, dropped before release.
+  reserved 2;
 }
 
 // One limit over a slice of the project's queued traffic. A job is evaluated
@@ -285,20 +292,25 @@ message RetryJobsResponse {
   repeated QueuedJob jobs = 1;
 }
 
-message ListJobGroupsRequest {}
+message ListJobGroupsRequest {
+  optional TokenPagination page_token = 1;
+  optional int32 page_size = 2;
+}
 
 message ListJobGroupsResponse {
   repeated JobGroup groups = 1;
+  TokenPagination next_page_token = 2;
 }
 
-// On every group operation below, an unset group_id applies the operation at
-// project scope, across grouped and ungrouped jobs alike.
+// An unset group_id pauses the project's whole queue, grouped and ungrouped
+// jobs alike.
 message PauseJobGroupRequest {
   optional string group_id = 1 [(logger.name) = "groupID"];
 }
 
 message PauseJobGroupResponse {}
 
+// An unset group_id resumes the project's whole queue.
 message ResumeJobGroupRequest {
   optional string group_id = 1 [(logger.name) = "groupID"];
 }
@@ -307,16 +319,21 @@ message ResumeJobGroupResponse {}
 
 // Cancels the queued jobs in the group; jobs already in flight run to
 // completion.
+//
+// group_id is required. Pause and resume take an empty one because freezing a
+// queue is reversible; emptying one is not, so there is no project-wide form
+// of this call to reach by leaving a field out.
 message CancelJobGroupRequest {
-  optional string group_id = 1 [(logger.name) = "groupID"];
+  string group_id = 1 [(logger.name) = "groupID"];
 }
 
 message CancelJobGroupResponse {}
 
 // Cancels the remaining queued jobs and hides the group and its terminal jobs
-// from listings. Rows are kept for the retention window.
+// from listings. Rows are kept for the retention window. group_id is required,
+// for the reason it is on CancelJobGroup.
 message DeleteJobGroupRequest {
-  optional string group_id = 1 [(logger.name) = "groupID"];
+  string group_id = 1 [(logger.name) = "groupID"];
 }
 
 message DeleteJobGroupResponse {}
